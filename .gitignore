@@ -1,0 +1,10 @@
+# Secrets / generated config
+/platform/config.php
+
+# OpenCart install-time config (contains DB credentials)
+/config.php
+/admin/config.php
+
+# Logs & cache
+/system/storage/logs/*.log
+/system/storage/cache/cache.*

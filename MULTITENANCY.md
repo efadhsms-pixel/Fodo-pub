@@ -41,8 +41,10 @@ request  ->  index.php / admin/index.php
 | `system/multitenant/tenantdb.php` | DB decorator that rewrites SQL to scope it by `tenant_id`. |
 | `system/multitenant/bootstrap.php` | Wires the above into `system/framework.php`. |
 | `system/multitenant/migrate.php` | CLI migration: creates `tenant` table, adds `tenant_id` columns. |
+| `system/multitenant/tenantcache.php` | Cache decorator that namespaces keys per tenant. |
 | `system/multitenant/tests/rewrite_test.php` | Unit tests for the SQL rewriter. |
-| `system/framework.php` | Calls `multitenant_bootstrap()` after the DB is created. |
+| `system/framework.php` | Calls `multitenant_bootstrap()` / `multitenant_scope_cache()`. |
+| `platform/` | Super-admin console for managing tenants (login, CRUD). |
 
 ## Setup
 
@@ -74,6 +76,23 @@ request  ->  index.php / admin/index.php
 
 ## Adding a tenant
 
+### Option A — Platform console (recommended)
+
+A self-contained super-admin console lives in `platform/` and runs on the base
+domain (`https://example.com/platform/`). Set it up once:
+
+```bash
+php platform/setup.php <username> <password>
+```
+
+Then sign in to create, edit, enable/disable, and delete tenants from the UI.
+The console is CSRF-protected, uses a hashed password, talks to the DB via
+prepared statements, and (by default) only answers on the base domain.
+
+`platform/config.php` holds the hashed credentials and is git-ignored.
+
+### Option B — SQL
+
 Insert a row in the `tenant` table (replace `oc_` with your prefix):
 
 ```sql
@@ -82,7 +101,8 @@ INSERT INTO oc_tenant SET subdomain = 'shop2', name = 'Second Shop',
 ```
 
 New tenants share the migrated schema; their data is created the first time
-their admin configures the shop.
+their admin configures the shop. Uploaded images are isolated per tenant under
+`image/catalog/t<tenant_id>/`.
 
 ## Running the tests
 
@@ -99,21 +119,27 @@ The SQL rewriter handles OpenCart's common patterns reliably:
 - ✅ `SELECT` scoped on its **primary** `FROM` table (alias-aware), with
   trailing `GROUP BY` / `ORDER BY` / `LIMIT` and sub-queries preserved.
 
+Done in later phases:
+
+- ✅ **Multi-table SELECT reads** — each scoped table joined with `JOIN ... ON`
+  now gets the tenant predicate added to its ON clause (LEFT/INNER-safe), in
+  addition to the primary FROM table.
+- ✅ **Per-tenant cache** — `TenantCache` namespaces every cache key by tenant
+  id, preventing catalog cache bleed across drivers.
+- ✅ **Per-tenant image storage** — uploads live under
+  `image/catalog/t<tenant_id>/`; the admin file manager is confined to it.
+- ✅ **Super-admin console** — `platform/` for tenant CRUD.
+
 Still to harden before production:
 
-1. **Multi-table SELECT reads.** A `SELECT` joining several *tenant* tables is
-   scoped on the primary table only. Joined tenant tables rely on the primary
-   table's `tenant_id` constraint plus the join keys; queries that select rows
-   without a path back to the primary table need review. Audit catalog/admin
-   read paths and add per-join predicates where needed.
-2. **Multi-row `INSERT ... VALUES (...),(...)`** is not rewritten (logged
+1. **Multi-row `INSERT ... VALUES (...),(...)`** is not rewritten (logged
    instead). Convert such inserts or extend the rewriter.
-3. **Caching.** OpenCart caches catalog data (`system/storage/cache`). Cache
-   keys must be namespaced per tenant to avoid cross-tenant cache bleed.
-4. **File storage.** `image/` uploads and `system/storage/` should be
-   partitioned per tenant.
-5. **Sessions & cookies.** Verify session isolation across sub-domains.
-6. **Super-admin console** for managing tenants from the platform domain.
+2. **Comma joins / `USING(...)`** in SELECTs are not auto-scoped (logged); the
+   common `JOIN ... ON` form is. Audit any comma-style joins.
+3. **Sessions & cookies.** Sub-domain cookies are host-scoped by default;
+   confirm session isolation for your deployment.
+4. **`DIR_UPLOAD` (product download files)** uses hashed filenames and the
+   `upload` table is tenant-scoped; physical partitioning is optional.
 
 Anything the rewriter cannot confidently handle is **passed through unchanged
 and written to the error log** (prefixed `Multi-Tenant:`) so it can be found
