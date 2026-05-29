@@ -104,6 +104,25 @@ New tenants share the migrated schema; their data is created the first time
 their admin configures the shop. Uploaded images are isolated per tenant under
 `image/catalog/t<tenant_id>/`.
 
+## Shipping & payment extensions
+
+- **Shipping methods** (flat, free, weight-based, …) and **simple payment
+  methods** (cash on delivery, bank transfer, cheque, free checkout) work
+  per-tenant out of the box: they are driven entirely by the scoped `extension`
+  and `setting` tables and create no tables of their own.
+- **Generated URLs are tenant-aware.** `site_url` / `site_ssl` are rebuilt from
+  the request host in the bootstrap, so storefront/admin links *and* payment
+  return / cancel / callback (IPN) URLs point at the tenant's sub-domain
+  instead of the shared base domain.
+- **Advanced payment gateways** (PayPal, Sage Pay, eWay, WorldPay, First Data,
+  Realex, Square, …) create their own tables on install. These are listed under
+  `extension_tables` in `system/multitenant/config.php`; the DB layer injects a
+  `tenant_id` column into their `CREATE TABLE` automatically and scopes all
+  access, so each tenant's transactions and stored cards/tokens stay isolated.
+
+If you install a third-party gateway not in `extension_tables`, add its table
+names there so its data is isolated too.
+
 ## Running the tests
 
 ```bash
@@ -129,6 +148,10 @@ Done in later phases:
 - ✅ **Per-tenant image storage** — uploads live under
   `image/catalog/t<tenant_id>/`; the admin file manager is confined to it.
 - ✅ **Super-admin console** — `platform/` for tenant CRUD.
+- ✅ **Tenant-aware URLs** — generated links and payment callback/return URLs
+  use the tenant sub-domain.
+- ✅ **Payment-gateway tables** — `CREATE TABLE` injection + `extension_tables`
+  isolate gateway data created on demand.
 
 Still to harden before production:
 

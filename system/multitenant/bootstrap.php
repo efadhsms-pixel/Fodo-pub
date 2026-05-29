@@ -67,14 +67,55 @@ function multitenant_bootstrap($registry, $application) {
 	if ($tenant->isResolved()) {
 		$prefix = defined('DB_PREFIX') ? DB_PREFIX : '';
 
+		$scoped_tables = $config['tenant_tables'];
+		if (!empty($config['extension_tables'])) {
+			$scoped_tables = array_merge($scoped_tables, $config['extension_tables']);
+		}
+
 		$registry->set('db', new TenantDB(
 			$db,
 			$tenant->getId(),
-			$config['tenant_tables'],
+			$scoped_tables,
 			$prefix,
 			$registry->get('log')
 		));
+
+		// Make every generated URL use the tenant's host instead of the shared
+		// HTTP_SERVER constant. This drives storefront/admin links AND payment
+		// return/cancel/callback URLs (built via $this->url->link()), which
+		// would otherwise all point at the base domain. The Url library is
+		// constructed later in framework.php from these config values.
+		multitenant_scope_url($registry);
 	}
+}
+
+/**
+ * Override site_url / site_ssl with a URL based on the current request host,
+ * preserving any sub-directory path from the configured HTTP_SERVER.
+ */
+function multitenant_scope_url($registry) {
+	$config = $registry->get('config');
+	if (!$config || !defined('HTTP_SERVER')) {
+		return;
+	}
+
+	$host = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
+	if ($host === '') {
+		return;
+	}
+
+	$secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+	$scheme = $secure ? 'https://' : 'http://';
+
+	$path = parse_url(HTTP_SERVER, PHP_URL_PATH);
+	if (!$path) {
+		$path = '/';
+	}
+
+	$base = $scheme . $host . $path;
+
+	$config->set('site_url', $base);
+	$config->set('site_ssl', $base);
 }
 
 /**

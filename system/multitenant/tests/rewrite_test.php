@@ -17,7 +17,7 @@ class FakeDB {
 	public function connected() { return true; }
 }
 
-$tables = array('product', 'product_description', 'order', 'setting', 'customer', 'category', 'seo_url');
+$tables = array('product', 'product_description', 'order', 'setting', 'customer', 'category', 'seo_url', 'paypal_order');
 $fake = new FakeDB();
 $db = new TenantDB($fake, 7, $tables, 'oc_', null);
 
@@ -88,6 +88,18 @@ $db->query("SELECT * FROM oc_product p LEFT JOIN oc_product_description pd ON (p
 $all &= check("multi join pd", $fake->last, "`pd`.`tenant_id` = 7");
 $all &= check("multi join c", $fake->last, "`c`.`tenant_id` = 7");
 $all &= check("multi join order kept", $fake->last, "ORDER BY p.sort");
+
+// CREATE TABLE for a scoped (gateway) table => tenant_id injected as 1st column
+$db->query("CREATE TABLE IF NOT EXISTS `oc_paypal_order` (`paypal_order_id` INT(11) NOT NULL AUTO_INCREMENT, `order_id` INT(11) NOT NULL, PRIMARY KEY (`paypal_order_id`))");
+$all &= check("create table injects tenant_id", $fake->last, "(`tenant_id` int(11) NOT NULL DEFAULT 7, `paypal_order_id`");
+
+// CREATE TABLE for a global table => untouched
+$db->query("CREATE TABLE IF NOT EXISTS `oc_country` (`country_id` INT(11) NOT NULL)");
+if (strpos($fake->last, 'tenant_id') !== false) { echo "FAIL  create global untouched\n"; $all = false; } else echo "PASS  create global untouched\n";
+
+// INSERT into the gateway table => tenant_id added
+$db->query("INSERT INTO oc_paypal_order SET order_id = 50, status = 'done'");
+$all &= check("gateway insert scoped", $fake->last, "`tenant_id` = 7,");
 
 // Platform context (tenant_id 0) => passthrough
 $db0 = new TenantDB($fake, 0, $tables, 'oc_', null);

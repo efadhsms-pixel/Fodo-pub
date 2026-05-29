@@ -100,8 +100,31 @@ class TenantDB {
 		if (preg_match('/^\(*\s*SELECT\b/i', $head)) {
 			return $this->rewriteSelect($sql);
 		}
+		if (preg_match('/^CREATE\s+TABLE\b/i', $head)) {
+			return $this->rewriteCreate($sql);
+		}
 
 		return $sql;
+	}
+
+	/**
+	 * CREATE TABLE [IF NOT EXISTS] `table` ( ... )
+	 *
+	 * Injects a `tenant_id` column as the first column for scoped tables so
+	 * that extension tables created on demand are tenant-isolated from birth.
+	 */
+	private function rewriteCreate($sql) {
+		if (!preg_match('/^(\s*CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?([a-z0-9_]+)`?\s*\()/i', $sql, $m)) {
+			return $sql;
+		}
+		$table = $m[2];
+		if (!$this->isScoped($table)) {
+			return $sql;
+		}
+		if (preg_match('/`tenant_id`/i', $sql)) {
+			return $sql;
+		}
+		return $m[1] . '`tenant_id` int(11) NOT NULL DEFAULT ' . $this->tenant_id . ', ' . substr($sql, strlen($m[1]));
 	}
 
 	/**
