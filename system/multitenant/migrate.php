@@ -131,6 +131,20 @@ if (!table_exists($db, $database, $tenant_table)) {
 	echo "`$tenant_table` already exists\n";
 }
 
+// 1b. Auto-isolation registry table ----------------------------------------
+$registry_table = $prefix . 'tenant_scoped_table';
+if (!table_exists($db, $database, $registry_table)) {
+	echo "Creating `$registry_table`\n";
+	run($db,
+		"CREATE TABLE `$registry_table` (" .
+		" `name` VARCHAR(191) NOT NULL," .
+		" PRIMARY KEY (`name`)" .
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+	);
+} else {
+	echo "`$registry_table` already exists\n";
+}
+
 // 2. Add tenant_id to scoped tables ----------------------------------------
 echo "\nAdding tenant_id columns:\n";
 $added = 0; $skipped = 0; $missing = 0;

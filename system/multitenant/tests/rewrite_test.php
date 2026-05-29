@@ -10,7 +10,8 @@ require __DIR__ . '/../tenantdb.php';
 // Fake underlying DB that just records the SQL it receives.
 class FakeDB {
 	public $last;
-	public function query($sql) { $this->last = $sql; return (object)array('num_rows' => 0, 'row' => array(), 'rows' => array()); }
+	public $all_queries = array();
+	public function query($sql) { $this->last = $sql; $this->all_queries[] = $sql; return (object)array('num_rows' => 0, 'row' => array(), 'rows' => array()); }
 	public function escape($v) { return addslashes($v); }
 	public function countAffected() { return 0; }
 	public function getLastId() { return 0; }
@@ -100,6 +101,28 @@ if (strpos($fake->last, 'tenant_id') !== false) { echo "FAIL  create global unto
 // INSERT into the gateway table => tenant_id added
 $db->query("INSERT INTO oc_paypal_order SET order_id = 50, status = 'done'");
 $all &= check("gateway insert scoped", $fake->last, "`tenant_id` = 7,");
+
+// --- Auto-isolation of brand-new (unlisted) extension tables --------------
+$auto = new TenantDB($fake, 7, array('product'), 'oc_', null, array(
+	'core_tables'    => array('product', 'country', 'order'),
+	'auto'           => true,
+	'registry_table' => 'oc_tenant_scoped_table',
+));
+
+// A new, non-core table created by some extension -> auto tenant_id injected
+$fake->all_queries = array();
+$auto->query("CREATE TABLE IF NOT EXISTS `oc_acme_widget` (`id` INT(11) NOT NULL AUTO_INCREMENT, PRIMARY KEY (`id`))");
+$all &= check("auto create injects tenant_id", $fake->last, "(`tenant_id` int(11) NOT NULL DEFAULT 7, `id`");
+$all &= check("auto registers table", implode(" || ", $fake->all_queries), "INSERT IGNORE INTO `oc_tenant_scoped_table` SET `name` = 'acme_widget'");
+// Now the table is scoped for the rest of the request:
+$auto->query("INSERT INTO oc_acme_widget SET name = 'x'");
+$all &= check("auto table insert scoped", $fake->last, "`tenant_id` = 7,");
+$auto->query("SELECT * FROM oc_acme_widget WHERE id = 1");
+$all &= check("auto table select scoped", $fake->last, "`oc_acme_widget`.`tenant_id` = 7 AND (id = 1)");
+
+// A CREATE for a CORE table is never auto-scoped
+$auto->query("CREATE TABLE IF NOT EXISTS `oc_country` (`country_id` INT(11) NOT NULL)");
+if (strpos($fake->last, 'tenant_id') !== false) { echo "FAIL  auto skips core table\n"; $all = false; } else echo "PASS  auto skips core table\n";
 
 // Platform context (tenant_id 0) => passthrough
 $db0 = new TenantDB($fake, 0, $tables, 'oc_', null);

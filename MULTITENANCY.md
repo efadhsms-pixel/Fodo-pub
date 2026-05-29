@@ -120,8 +120,19 @@ their admin configures the shop. Uploaded images are isolated per tenant under
   `tenant_id` column into their `CREATE TABLE` automatically and scopes all
   access, so each tenant's transactions and stored cards/tokens stay isolated.
 
-If you install a third-party gateway not in `extension_tables`, add its table
-names there so its data is isolated too.
+### Automatic isolation of any extension
+
+You normally do **not** need to touch `extension_tables` at all. With
+`auto_isolate_new_tables` enabled (the default), the DB layer detects any table
+that is created at runtime and is not a known core OpenCart table, injects a
+`tenant_id` column into it, and records it in `<prefix>tenant_scoped_table`.
+From then on every read/write to that table is scoped — on the current request
+and all future ones. So **installing any extension isolates its data per tenant
+automatically, with no code or config changes**.
+
+- `core_tables` in `config.php` is the baseline used to recognise "new" tables.
+- To keep a particular extension table shared across tenants, add it to
+  `global_extension_tables`.
 
 ## Running the tests
 

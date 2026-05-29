@@ -22,7 +22,11 @@
 class TenantDB {
 	private $db;
 	private $tenant_id;
+	private $prefix;
 	private $tables = array();
+	private $core = array();
+	private $auto = false;
+	private $registry_table = '';
 	private $log;
 
 	/**
@@ -31,15 +35,29 @@ class TenantDB {
 	 * @param array  $tenant_tables scoped table names WITHOUT prefix
 	 * @param string $prefix        DB prefix (e.g. "oc_")
 	 * @param object $log           optional Log instance for warnings
+	 * @param array  $options       auto-isolation options:
+	 *                                 'core_tables'    => string[] (no prefix)
+	 *                                 'auto'           => bool
+	 *                                 'registry_table' => string (prefixed)
 	 */
-	public function __construct($db, $tenant_id, array $tenant_tables, $prefix, $log = null) {
+	public function __construct($db, $tenant_id, array $tenant_tables, $prefix, $log = null, array $options = array()) {
 		$this->db = $db;
 		$this->tenant_id = (int)$tenant_id;
+		$this->prefix = $prefix;
 		$this->log = $log;
 
 		foreach ($tenant_tables as $table) {
 			$this->tables[strtolower($prefix . $table)] = true;
 		}
+
+		if (!empty($options['core_tables'])) {
+			foreach ($options['core_tables'] as $table) {
+				$this->core[strtolower($prefix . $table)] = true;
+			}
+		}
+
+		$this->auto = !empty($options['auto']);
+		$this->registry_table = isset($options['registry_table']) ? $options['registry_table'] : '';
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -72,6 +90,37 @@ class TenantDB {
 
 	private function isScoped($table) {
 		return isset($this->tables[strtolower($table)]);
+	}
+
+	private function isCore($table) {
+		return isset($this->core[strtolower($table)]);
+	}
+
+	/**
+	 * Mark a table as tenant-scoped for the rest of this request and persist it
+	 * to the registry table so future requests scope it too. The registry table
+	 * itself is never scoped, so this is written via the underlying connection.
+	 */
+	private function registerTable($prefixed_table) {
+		$this->tables[strtolower($prefixed_table)] = true;
+
+		if (!$this->registry_table) {
+			return;
+		}
+
+		$bare = $prefixed_table;
+		if ($this->prefix !== '' && stripos($prefixed_table, $this->prefix) === 0) {
+			$bare = substr($prefixed_table, strlen($this->prefix));
+		}
+
+		try {
+			$this->db->query(
+				"INSERT IGNORE INTO `" . $this->registry_table . "` SET `name` = '" . $this->db->escape($bare) . "'"
+			);
+		} catch (\Exception $e) {
+			// Registry unavailable: isolation still applies for this request.
+			$this->warn('could not persist auto-scoped table ' . $bare, $e->getMessage());
+		}
 	}
 
 	private function warn($message, $sql) {
@@ -118,7 +167,18 @@ class TenantDB {
 			return $sql;
 		}
 		$table = $m[2];
-		if (!$this->isScoped($table)) {
+
+		$scoped = $this->isScoped($table);
+
+		// Auto-isolation: a brand-new, non-core table belongs to whatever
+		// extension is creating it -> scope it and remember it. ($table here is
+		// already the full, prefixed name as written in the SQL.)
+		if (!$scoped && $this->auto && !$this->isCore($table)) {
+			$this->registerTable($table);
+			$scoped = true;
+		}
+
+		if (!$scoped) {
 			return $sql;
 		}
 		if (preg_match('/`tenant_id`/i', $sql)) {

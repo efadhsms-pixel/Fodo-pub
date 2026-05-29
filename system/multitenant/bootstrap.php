@@ -72,12 +72,36 @@ function multitenant_bootstrap($registry, $application) {
 			$scoped_tables = array_merge($scoped_tables, $config['extension_tables']);
 		}
 
+		$auto = !empty($config['auto_isolate_new_tables']);
+		$registry_table = $prefix . 'tenant_scoped_table';
+
+		if ($auto) {
+			// Registry of auto-isolated tables, plus any already recorded.
+			$scoped_tables = array_merge(
+				$scoped_tables,
+				multitenant_load_registry($db, $registry_table)
+			);
+
+			// Honour the shared-table opt-out list.
+			if (!empty($config['global_extension_tables'])) {
+				$globals = array_flip($config['global_extension_tables']);
+				$scoped_tables = array_values(array_filter($scoped_tables, function ($t) use ($globals) {
+					return !isset($globals[$t]);
+				}));
+			}
+		}
+
 		$registry->set('db', new TenantDB(
 			$db,
 			$tenant->getId(),
 			$scoped_tables,
 			$prefix,
-			$registry->get('log')
+			$registry->get('log'),
+			array(
+				'core_tables'    => isset($config['core_tables']) ? $config['core_tables'] : array(),
+				'auto'           => $auto,
+				'registry_table' => $auto ? $registry_table : '',
+			)
 		));
 
 		// Make every generated URL use the tenant's host instead of the shared
@@ -87,6 +111,34 @@ function multitenant_bootstrap($registry, $application) {
 		// constructed later in framework.php from these config values.
 		multitenant_scope_url($registry);
 	}
+}
+
+/**
+ * Ensure the auto-isolation registry table exists and return the table names
+ * (without prefix) recorded in it. Runs against the raw connection so it is
+ * never itself scoped. Failures are non-fatal.
+ *
+ * @return string[] table names previously auto-isolated
+ */
+function multitenant_load_registry($db, $registry_table) {
+	try {
+		$db->query(
+			"CREATE TABLE IF NOT EXISTS `" . $registry_table . "` (" .
+			" `name` VARCHAR(191) NOT NULL," .
+			" PRIMARY KEY (`name`)" .
+			") ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+		);
+
+		$query = $db->query("SELECT `name` FROM `" . $registry_table . "`");
+	} catch (\Exception $e) {
+		return array();
+	}
+
+	$names = array();
+	foreach ($query->rows as $row) {
+		$names[] = $row['name'];
+	}
+	return $names;
 }
 
 /**
