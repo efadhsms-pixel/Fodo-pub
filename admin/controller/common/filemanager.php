@@ -3,6 +3,9 @@ class ControllerCommonFileManager extends Controller {
 	public function index() {
 		$this->load->language('common/filemanager');
 
+		// Multi-tenant image root (isolates each tenant's uploads)
+		$base = defined('MT_IMAGE_BASE') ? MT_IMAGE_BASE : 'catalog';
+
 		// Find which protocol to use to pass the full image link back
 		if ($this->request->server['HTTPS']) {
 			$server = HTTPS_CATALOG;
@@ -18,9 +21,9 @@ class ControllerCommonFileManager extends Controller {
 
 		// Make sure we have the correct directory
 		if (isset($this->request->get['directory'])) {
-			$directory = rtrim(DIR_IMAGE . 'catalog/' . str_replace('*', '', $this->request->get['directory']), '/');
+			$directory = rtrim(DIR_IMAGE . $base . '/' . str_replace('*', '', $this->request->get['directory']), '/');
 		} else {
-			$directory = DIR_IMAGE . 'catalog';
+			$directory = DIR_IMAGE . $base;
 		}
 
 		if (isset($this->request->get['page'])) {
@@ -36,7 +39,7 @@ class ControllerCommonFileManager extends Controller {
 
 		$this->load->model('tool/image');
 
-		if (substr(str_replace('\\', '/', realpath($directory) . '/' . $filter_name), 0, strlen(DIR_IMAGE . 'catalog')) == str_replace('\\', '/', DIR_IMAGE . 'catalog')) {
+		if (substr(str_replace('\\', '/', realpath($directory) . '/' . $filter_name), 0, strlen(DIR_IMAGE . $base)) == str_replace('\\', '/', DIR_IMAGE . $base)) {
 			// Get directories
 			$directories = glob($directory . '/' . $filter_name . '*', GLOB_ONLYDIR);
 
@@ -80,7 +83,7 @@ class ControllerCommonFileManager extends Controller {
 					'name'  => implode(' ', $name),
 					'type'  => 'directory',
 					'path'  => utf8_substr($image, utf8_strlen(DIR_IMAGE)),
-					'href'  => $this->url->link('common/filemanager', 'user_token=' . $this->session->data['user_token'] . '&directory=' . urlencode(utf8_substr($image, utf8_strlen(DIR_IMAGE . 'catalog/'))) . $url, true)
+					'href'  => $this->url->link('common/filemanager', 'user_token=' . $this->session->data['user_token'] . '&directory=' . urlencode(utf8_substr($image, utf8_strlen(DIR_IMAGE . $base . '/'))) . $url, true)
 				);
 			} elseif (is_file($image)) {
 				$data['images'][] = array(
@@ -191,6 +194,9 @@ class ControllerCommonFileManager extends Controller {
 	public function upload() {
 		$this->load->language('common/filemanager');
 
+		// Multi-tenant image root (isolates each tenant's uploads)
+		$base = defined('MT_IMAGE_BASE') ? MT_IMAGE_BASE : 'catalog';
+
 		$json = array();
 
 		// Check user has permission
@@ -200,13 +206,13 @@ class ControllerCommonFileManager extends Controller {
 
 		// Make sure we have the correct directory
 		if (isset($this->request->get['directory'])) {
-			$directory = rtrim(DIR_IMAGE . 'catalog/' . $this->request->get['directory'], '/');
+			$directory = rtrim(DIR_IMAGE . $base . '/' . $this->request->get['directory'], '/');
 		} else {
-			$directory = DIR_IMAGE . 'catalog';
+			$directory = DIR_IMAGE . $base;
 		}
 
 		// Check its a directory
-		if (!is_dir($directory) || substr(str_replace('\\', '/', realpath($directory)), 0, strlen(DIR_IMAGE . 'catalog')) != str_replace('\\', '/', DIR_IMAGE . 'catalog')) {
+		if (!is_dir($directory) || substr(str_replace('\\', '/', realpath($directory)), 0, strlen(DIR_IMAGE . $base)) != str_replace('\\', '/', DIR_IMAGE . $base)) {
 			$json['error'] = $this->language->get('error_directory');
 		}
 
@@ -286,6 +292,9 @@ class ControllerCommonFileManager extends Controller {
 	public function folder() {
 		$this->load->language('common/filemanager');
 
+		// Multi-tenant image root (isolates each tenant's uploads)
+		$base = defined('MT_IMAGE_BASE') ? MT_IMAGE_BASE : 'catalog';
+
 		$json = array();
 
 		// Check user has permission
@@ -295,13 +304,13 @@ class ControllerCommonFileManager extends Controller {
 
 		// Make sure we have the correct directory
 		if (isset($this->request->get['directory'])) {
-			$directory = rtrim(DIR_IMAGE . 'catalog/' . $this->request->get['directory'], '/');
+			$directory = rtrim(DIR_IMAGE . $base . '/' . $this->request->get['directory'], '/');
 		} else {
-			$directory = DIR_IMAGE . 'catalog';
+			$directory = DIR_IMAGE . $base;
 		}
 
 		// Check its a directory
-		if (!is_dir($directory) || substr(str_replace('\\', '/', realpath($directory)), 0, strlen(DIR_IMAGE . 'catalog')) != str_replace('\\', '/', DIR_IMAGE . 'catalog')) {
+		if (!is_dir($directory) || substr(str_replace('\\', '/', realpath($directory)), 0, strlen(DIR_IMAGE . $base)) != str_replace('\\', '/', DIR_IMAGE . $base)) {
 			$json['error'] = $this->language->get('error_directory');
 		}
 
@@ -336,6 +345,9 @@ class ControllerCommonFileManager extends Controller {
 	public function delete() {
 		$this->load->language('common/filemanager');
 
+		// Multi-tenant image root (isolates each tenant's uploads)
+		$base = defined('MT_IMAGE_BASE') ? MT_IMAGE_BASE : 'catalog';
+
 		$json = array();
 
 		// Check user has permission
@@ -352,7 +364,7 @@ class ControllerCommonFileManager extends Controller {
 		// Loop through each path to run validations
 		foreach ($paths as $path) {
 			// Check path exsists
-			if ($path == DIR_IMAGE . 'catalog' || substr(str_replace('\\', '/', realpath(DIR_IMAGE . $path)), 0, strlen(DIR_IMAGE . 'catalog')) != str_replace('\\', '/', DIR_IMAGE . 'catalog')) {
+			if ($path == DIR_IMAGE . $base || substr(str_replace('\\', '/', realpath(DIR_IMAGE . $path)), 0, strlen(DIR_IMAGE . $base)) != str_replace('\\', '/', DIR_IMAGE . $base)) {
 				$json['error'] = $this->language->get('error_delete');
 
 				break;

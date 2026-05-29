@@ -34,6 +34,19 @@ function multitenant_bootstrap($registry, $application) {
 		define('TENANT_ID', $tenant->getId());
 	}
 
+	// Per-tenant image root (under image/catalog). Platform keeps 'catalog'.
+	if (!defined('MT_IMAGE_BASE')) {
+		define('MT_IMAGE_BASE', $tenant->isResolved() ? 'catalog/t' . $tenant->getId() : 'catalog');
+	}
+
+	// Ensure the tenant's image directory exists.
+	if ($tenant->isResolved() && defined('DIR_IMAGE')) {
+		$tenant_image_dir = DIR_IMAGE . MT_IMAGE_BASE;
+		if (!is_dir($tenant_image_dir)) {
+			@mkdir($tenant_image_dir, 0777, true);
+		}
+	}
+
 	// A sub-domain was supplied but no active tenant matched it.
 	if ($config['strict_resolution'] && !$tenant->isResolved() && !$tenant->isPlatform()) {
 		header('HTTP/1.1 404 Not Found');
