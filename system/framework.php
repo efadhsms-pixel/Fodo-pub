@@ -80,6 +80,12 @@ if ($config->get('db_autostart')) {
 	$registry->set('db', new DB($config->get('db_engine'), $config->get('db_hostname'), $config->get('db_username'), $config->get('db_password'), $config->get('db_database'), $config->get('db_port')));
 }
 
+// Multi-Tenant (resolve tenant from sub-domain and scope the DB)
+if (is_file(DIR_SYSTEM . 'multitenant/bootstrap.php')) {
+	require_once(DIR_SYSTEM . 'multitenant/bootstrap.php');
+	multitenant_bootstrap($registry, $application_config);
+}
+
 // Session
 $session = new Session($config->get('session_engine'), $registry);
 $registry->set('session', $session);
