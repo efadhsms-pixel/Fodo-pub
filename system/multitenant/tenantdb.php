@@ -176,29 +176,95 @@ class TenantDB {
 	}
 
 	/**
-	 * SELECT ... FROM `table` [alias] ... scope on the primary table.
+	 * SELECT ... FROM `table` [alias] [JOIN ...] ...
+	 *
+	 * Scopes every tenant-scoped table in the query:
+	 *   - each scoped table joined with `JOIN ... ON` gets the tenant predicate
+	 *     appended to its ON condition (correct for LEFT/INNER join semantics);
+	 *   - the primary FROM table gets the predicate added to the WHERE clause.
 	 */
 	private function rewriteSelect($sql) {
-		// Locate the top-level primary FROM table + optional alias.
+		// 1. Scope joined tenant tables inside their ON clauses first.
+		$sql = $this->scopeJoins($sql);
+
+		// 2. Scope the primary FROM table via the WHERE clause.
 		$from = $this->scanKeyword($sql, array('FROM'), 0);
 		if ($from === false) {
 			return $sql;
 		}
 
 		$after = substr($sql, $from + 4);
-		if (!preg_match('/^\s+`?([a-z0-9_]+)`?(?:\s+(?:AS\s+)?(?!WHERE|JOIN|INNER|LEFT|RIGHT|ON|GROUP|ORDER|LIMIT|HAVING|UNION)`?([a-z0-9_]+)`?)?/i', $after, $m)) {
+		if (!preg_match('/^\s+`?([a-z0-9_]+)`?(?:\s+(?:AS\s+)?(?!WHERE|JOIN|INNER|LEFT|RIGHT|CROSS|STRAIGHT_JOIN|ON|USING|GROUP|ORDER|LIMIT|HAVING|UNION)`?([a-z0-9_]+)`?)?/i', $after, $m)) {
 			return $sql;
 		}
 
 		$table = $m[1];
 		if (!$this->isScoped($table)) {
-			// Primary table is global; nothing to scope here.
+			// Primary table is global; nothing to scope on the WHERE.
 			return $sql;
 		}
 
 		$ref = !empty($m[2]) ? '`' . $m[2] . '`' : '`' . $table . '`';
 
 		return $this->injectWhere($sql, $ref . '.`tenant_id` = ' . $this->tenant_id, true);
+	}
+
+	/**
+	 * Append a tenant predicate to the ON condition of every JOIN whose table
+	 * is tenant-scoped. Edits are collected and applied right-to-left so byte
+	 * offsets stay valid.
+	 */
+	private function scopeJoins($sql) {
+		$boundaries = array('JOIN', 'INNER', 'LEFT', 'RIGHT', 'CROSS', 'STRAIGHT_JOIN', 'WHERE', 'GROUP BY', 'HAVING', 'ORDER BY', 'LIMIT', 'UNION');
+
+		$edits = array();
+
+		foreach ($this->scanAllKeywords($sql, array('JOIN')) as $jpos) {
+			$tableOffset = $jpos + 4; // past "JOIN"
+			$segment = substr($sql, $tableOffset);
+
+			if (!preg_match('/^\s+`?([a-z0-9_]+)`?(?:\s+(?:AS\s+)?(?!ON|USING|JOIN|INNER|LEFT|RIGHT|CROSS|STRAIGHT_JOIN|WHERE)`?([a-z0-9_]+)`?)?/i', $segment, $m)) {
+				continue;
+			}
+
+			$table = $m[1];
+			if (!$this->isScoped($table)) {
+				continue;
+			}
+
+			// Find this join's ON clause.
+			$onPos = $this->scanKeyword($sql, array('ON'), $tableOffset + strlen($m[0]));
+			if ($onPos === false) {
+				// USING(...) or comma join: cannot safely place the predicate.
+				$this->warn('scoped JOIN without ON not rewritten', $sql);
+				continue;
+			}
+			// The ON must belong to THIS join (no other boundary in between).
+			$nextBoundary = $this->scanKeyword($sql, $boundaries, $tableOffset + strlen($m[0]));
+			if ($nextBoundary !== false && $nextBoundary < $onPos) {
+				continue;
+			}
+
+			$condStart = $onPos + 2;
+			$condEnd = $this->scanKeyword($sql, $boundaries, $condStart);
+			if ($condEnd === false) {
+				$condEnd = strlen(rtrim(rtrim($sql), ';'));
+			}
+
+			$ref = !empty($m[2]) ? '`' . $m[2] . '`' : '`' . $table . '`';
+			$condition = substr($sql, $condStart, $condEnd - $condStart);
+
+			$replacement = ' (' . trim($condition) . ') AND ' . $ref . '.`tenant_id` = ' . $this->tenant_id . ' ';
+			$edits[] = array($condStart, $condEnd, $replacement);
+		}
+
+		// Apply right-to-left.
+		usort($edits, function ($a, $b) { return $b[0] - $a[0]; });
+		foreach ($edits as $e) {
+			$sql = substr($sql, 0, $e[0]) . $e[2] . substr($sql, $e[1]);
+		}
+
+		return $sql;
 	}
 
 	/**
@@ -299,6 +365,21 @@ class TenantDB {
 		}
 
 		return false;
+	}
+
+	/**
+	 * Like scanKeyword(), but returns every matching top-level offset.
+	 *
+	 * @return int[] list of byte offsets (possibly empty)
+	 */
+	private function scanAllKeywords($sql, array $keywords) {
+		$positions = array();
+		$from = 0;
+		while (($pos = $this->scanKeyword($sql, $keywords, $from)) !== false) {
+			$positions[] = $pos;
+			$from = $pos + 1;
+		}
+		return $positions;
 	}
 
 	/**

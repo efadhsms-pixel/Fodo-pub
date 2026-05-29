@@ -63,3 +63,20 @@ function multitenant_bootstrap($registry, $application) {
 		));
 	}
 }
+
+/**
+ * Namespace the cache per tenant. Called from system/framework.php AFTER the
+ * Cache object is created (the cache is built later than the DB in framework).
+ */
+function multitenant_scope_cache($registry) {
+	$tenant = $registry->get('tenant');
+	$cache = $registry->get('cache');
+
+	if (!$tenant || !$cache || !$tenant->isResolved()) {
+		return;
+	}
+
+	require_once(DIR_SYSTEM . 'multitenant/tenantcache.php');
+
+	$registry->set('cache', new TenantCache($cache, $tenant->getId()));
+}

@@ -117,6 +117,11 @@ if ($config->get('session_autostart')) {
 // Cache
 $registry->set('cache', new Cache($config->get('cache_engine'), $config->get('cache_expire')));
 
+// Multi-Tenant (namespace the cache per tenant)
+if (function_exists('multitenant_scope_cache')) {
+	multitenant_scope_cache($registry);
+}
+
 // Url
 if ($config->get('url_autostart')) {
 	$registry->set('url', new Url($config->get('site_url'), $config->get('site_ssl')));

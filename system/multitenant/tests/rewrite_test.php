@@ -74,6 +74,21 @@ $db->query("SELECT * FROM oc_product p WHERE p.id IN (SELECT id FROM oc_product_
 $all &= check("subquery safe predicate", $fake->last, "`p`.`tenant_id` = 7 AND (p.id IN (SELECT id FROM oc_product_description WHERE x=1 LIMIT 5))");
 $all &= check("subquery outer order kept", $fake->last, ") ORDER BY p.id");
 
+// JOIN to another scoped table => predicate added inside its ON clause
+$db->query("SELECT p.product_id FROM oc_product p LEFT JOIN oc_product_description pd ON (pd.product_id = p.product_id) WHERE p.status = '1'");
+$all &= check("join scoped ON predicate", $fake->last, "ON ((pd.product_id = p.product_id)) AND `pd`.`tenant_id` = 7");
+$all &= check("join primary still scoped", $fake->last, "`p`.`tenant_id` = 7 AND (p.status = '1')");
+
+// JOIN to a global table => ON left untouched
+$db->query("SELECT p.product_id FROM oc_product p LEFT JOIN oc_country c ON (c.country_id = p.country_id) WHERE p.status = '1'");
+if (strpos($fake->last, '`c`.`tenant_id`') !== false) { echo "FAIL  global join should be untouched\n"; $all = false; } else echo "PASS  global join untouched\n";
+
+// Multiple scoped joins
+$db->query("SELECT * FROM oc_product p LEFT JOIN oc_product_description pd ON (pd.product_id = p.product_id) LEFT JOIN oc_category c ON (c.category_id = p.cid) WHERE p.status = 1 ORDER BY p.sort");
+$all &= check("multi join pd", $fake->last, "`pd`.`tenant_id` = 7");
+$all &= check("multi join c", $fake->last, "`c`.`tenant_id` = 7");
+$all &= check("multi join order kept", $fake->last, "ORDER BY p.sort");
+
 // Platform context (tenant_id 0) => passthrough
 $db0 = new TenantDB($fake, 0, $tables, 'oc_', null);
 $db0->query("SELECT * FROM oc_product");
