@@ -76,7 +76,22 @@ request  ->  index.php / admin/index.php
 
 ## Adding a tenant
 
-### Option A — Platform console (recommended)
+### Option A — Public self-service landing page
+
+The base domain serves a public **free-store sign-up** page
+(`platform/landing.php`, shown automatically at the platform root). A visitor
+enters a store name, sub-domain, email and admin credentials; on submit the
+tenant is created and **provisioned** (`platform/provision.php`): an
+Administrator user group and admin user are created and the store settings are
+cloned from a template tenant and re-pointed at the new shop. The owner can
+then sign in at `https://<sub>.<base_domain>/admin/` and start adding products.
+
+Shared reference data (currencies, order/return statuses, length/weight
+classes, geo zones, languages, countries) is platform-wide, so a brand-new
+store works immediately; all business data (products, customers, orders,
+settings, admin users) stays isolated per tenant.
+
+### Option B — Platform console (recommended for operators)
 
 A self-contained super-admin console lives in `platform/` and runs on the base
 domain (`https://example.com/platform/`). Set it up once:
@@ -91,7 +106,7 @@ prepared statements, and (by default) only answers on the base domain.
 
 `platform/config.php` holds the hashed credentials and is git-ignored.
 
-### Option B — SQL
+### Option C — SQL
 
 Insert a row in the `tenant` table (replace `oc_` with your prefix):
 

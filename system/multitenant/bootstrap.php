@@ -56,7 +56,15 @@ function multitenant_bootstrap($registry, $application) {
 	}
 
 	// The storefront must always belong to a tenant; never serve merged data.
+	// On the platform base domain, show the public sign-up landing page.
 	if ($application === 'catalog' && !$tenant->isResolved()) {
+		$root = defined('DIR_OPENCART') ? DIR_OPENCART : dirname(DIR_SYSTEM) . '/';
+		$landing = $root . 'platform/landing.php';
+		if (is_file($landing)) {
+			require($landing);
+			exit;
+		}
+
 		header('HTTP/1.1 404 Not Found');
 		header('Content-Type: text/html; charset=utf-8');
 		echo 'No store is configured for this address.';

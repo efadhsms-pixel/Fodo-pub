@@ -75,11 +75,11 @@ return array(
 		'customer_transaction', 'customer_wishlist',
 		'address',
 
-		// Sales
+		// Sales (order_status is shared reference data — see global list below)
 		'order', 'order_history', 'order_option', 'order_product', 'order_recurring',
-		'order_recurring_transaction', 'order_shipment', 'order_status', 'order_total',
+		'order_recurring_transaction', 'order_shipment', 'order_total',
 		'order_voucher',
-		'return', 'return_action', 'return_history', 'return_reason', 'return_status',
+		'return', 'return_history',
 		'coupon', 'coupon_category', 'coupon_history', 'coupon_product',
 		'voucher', 'voucher_history', 'voucher_theme', 'voucher_theme_description',
 		'cart',
@@ -94,12 +94,9 @@ return array(
 		'module', 'theme',
 		'seo_url',
 
-		// Localisation (per-shop configurable)
-		'currency',
-		'geo_zone', 'zone_to_geo_zone',
-		'length_class', 'length_class_description',
-		'weight_class', 'weight_class_description',
-		'stock_status',
+		// Localisation: tax is per-shop; classes/statuses/currency/geo_zone are
+		// shared reference defaults (see the global note below) so a brand-new
+		// store works out of the box.
 		'location',
 		'tax_class', 'tax_rate', 'tax_rate_to_customer_group', 'tax_rule',
 
